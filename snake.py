@@ -41,18 +41,19 @@ def draw_grid():
     pygame.display.flip()
 
 def draw_input_layer(surface, inputs, x, y, size):
-    """
-    Draws a vertical column of squares representing input activations.
-    surface: pygame.Surface to draw on
-    inputs: list of floats (0-1)
-    x, y: top-left corner
-    size: side length of each square
-    """
-    for i, val in enumerate(inputs):
-        brightness = max(0, min(255, int(val * 255)))
-        color = (int(brightness*0.1), int(brightness*0.6), int(brightness*0.9))
-        rect = pygame.Rect(x, y + i * size, size, size)
-        pygame.draw.rect(surface, color, rect)
+    # draw vertical column representing NN layer
+    if len(inputs) != 4: # hard-coded, if the inputs list is not the outputs
+        for i, val in enumerate(inputs):
+            brightness = max(0, min(255, int(val * 255)))
+            color = (int(brightness*0.1), int(brightness*0.6), int(brightness*0.9))
+            rect = pygame.Rect(x, y + i * size, size, size)
+            pygame.draw.rect(surface, color, rect)
+    else: 
+        for i, val in enumerate(inputs):
+            brightness = max(0, min(255, int(val * 255)))
+            color = (int(brightness*0.1), int(brightness*0.6), int(brightness*0.9))
+            rect = pygame.Rect(x, y + i * size, size, size)
+            pygame.draw.rect(surface, color, rect)
 
 def playRound():
     global headpointer, tailpointer, apple, current_direction, tail_direction
@@ -98,18 +99,24 @@ def playRound():
         current_direction = x
 
         # collision check
-        try:
-            if (
-                (x == "d" and grid[headpointer[0]][headpointer[1] + 1] == 1)
-                or (x == "a" and grid[headpointer[0]][headpointer[1] - 1] == 1)
-                or (x == "w" and grid[headpointer[0] - 1][headpointer[1]] == 1)
-                or (x == "s" and grid[headpointer[0] + 1][headpointer[1]] == 1)
-            ):
-                nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
-                return score
-        except:
+
+        if (
+            (x == "d" and headpointer[1] + 1 == DIMENSIONS[0])
+            or (x == "a" and headpointer[1] == 0)
+            or (x == "w" and headpointer[0] == 0)
+            or (x == "s" and headpointer[0] == DIMENSIONS[1])
+        ):
             nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
             return score
+        elif(
+            (x == "d" and grid[headpointer[0]][headpointer[1] + 1] == 1)
+            or (x == "a" and grid[headpointer[0]][headpointer[1] - 1] == 1)
+            or (x == "w" and grid[headpointer[0] - 1][headpointer[1]] == 1)
+            or (x == "s" and grid[headpointer[0] + 1][headpointer[1]] == 1)
+        ):
+            nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
+            return score
+
 
         grid[headpointer[0]][headpointer[1]] = 1
 
