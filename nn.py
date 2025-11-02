@@ -1,6 +1,11 @@
 import random
 import math
 
+def he_init(n_inputs, n_outputs):
+    std = math.sqrt(2 / n_inputs)
+    return [[random.gauss(0, std) for _ in range(n_outputs)] for _ in range(n_inputs)]
+
+
 def generateInputLayer(board, head, apple):
     # board + head + apple
     input_layer = []
@@ -11,8 +16,8 @@ def generateInputLayer(board, head, apple):
     ar, ac = apple
 
     # --- 7x7 grid around head ---
-    for dr in range(-3, 3):
-        for dc in range(-3, 3):
+    for dr in range(-3, 4):
+        for dc in range(-3, 4):
             r, c = hr + dr, hc + dc
             if 0 <= r < rows and 0 <= c < cols:
                 input_layer.append(board[r][c])
@@ -36,23 +41,18 @@ def generateInputLayer(board, head, apple):
 
     return input_layer
 
-# ARCHITECTURE: 42 x 24 x 16 x 4
+# ARCHITECTURE: 55 x 24 x 16 x 4
 
 # weights: 3D array. weights[layer][neuron][connectsto]
 
 random.seed(57)
 
 weights = [
-    [
-        [random.random() for j in range(24)] for i in range(42)
-    ], 
-    [
-        [random.random() for j in range(16)] for i in range(24)
-    ],
-    [
-        [random.random() for j in range(4)] for i in range(16)
-    ]
+    he_init(55, 24),
+    he_init(24, 16),
+    he_init(16, 4)
 ]
+
 
 # biases: 2D array: biases[layer][neuron]
 biases = [
@@ -63,40 +63,38 @@ biases = [
 ]
 
 def feed_forward(inputLayer):
-    # inputs: [49 square for things around head] + [distance from top, bottom, left, right] + [distance to apple up] + [distance to apple left]
-    hiddenlayer1 = [0 for i in range(24)] 
-    hiddenlayer2 = [0 for i in range(16)]
-    outputlayer = [0 for i in range(4)]
-    for nextNeuronIndex in range(len(hiddenlayer1)):
-        for currentNeuronIndex in range(len(inputLayer)):
-            hiddenlayer1[nextNeuronIndex] += weights[0][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
-        hiddenlayer1[nextNeuronIndex] += biases[1][nextNeuronIndex]
-        hiddenlayer1[nextNeuronIndex] = max(0, hiddenlayer1[nextNeuronIndex]) # activation function
-    
-    for nextNeuronIndex in range(len(hiddenlayer2)):
-        for currentNeuronIndex in range(len(hiddenlayer1)):
-            hiddenlayer2[nextNeuronIndex] += weights[1][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
-        hiddenlayer2[nextNeuronIndex] += biases[2][nextNeuronIndex]
-        hiddenlayer2[nextNeuronIndex] = max(0, hiddenlayer2[nextNeuronIndex]) # activation function
+    """Return (z1, a1, z2, a2, z3, a3) where a3 are raw Q values (linear)."""
+    # Layer 1 (input -> 24)
+    z1 = [0.0] * 24
+    a1 = [0.0] * 24
+    for j in range(24):
+        total = biases[1][j]
+        for i in range(len(inputLayer)):
+            total += inputLayer[i] * weights[0][i][j]
+        z1[j] = total
+        a1[j] = relu(total)
 
-    for nextNeuronIndex in range(len(outputlayer)):
-        for currentNeuronIndex in range(len(hiddenlayer2)):
-            outputlayer[nextNeuronIndex] += weights[2][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
-        outputlayer[nextNeuronIndex] += biases[3][nextNeuronIndex]
-        outputlayer[nextNeuronIndex] = math.tanh(outputlayer[nextNeuronIndex]) # activation function
+    # Layer 2 (24 -> 16)
+    z2 = [0.0] * 16
+    a2 = [0.0] * 16
+    for j in range(16):
+        total = biases[2][j]
+        for i in range(24):
+            total += a1[i] * weights[1][i][j]   # <- IMPORTANT: use a1 (previous activation)
+        z2[j] = total
+        a2[j] = relu(total)
 
-    # normalise output layer
-    sumOutputs = 0
-    for output in outputlayer:
-        sumOutputs += output
+    # Output layer (16 -> 4), linear outputs for Q values
+    z3 = [0.0] * 4
+    a3 = [0.0] * 4
+    for j in range(4):
+        total = biases[3][j]
+        for i in range(16):
+            total += a2[i] * weights[2][i][j]   # <- use a2
+        z3[j] = total
+        a3[j] = total   # linear output (raw Q values)
 
-    for i in range(len(outputlayer)):
-        outputlayer[i] = outputlayer[i] / sumOutputs
-    
-    return hiddenlayer1, hiddenlayer2, outputlayer
-
-import random
-import math
+    return z1, a1, z2, a2, z3, a3
 
 GAMMA = 0.9  # discount factor
 
@@ -112,186 +110,74 @@ def choose_action(output, epsilon=0.1):
         return random.randint(0, len(output) - 1)
     return output.index(max(output))
 
-def backpropagate(inputLayer, target_output, learning_rate=0.01):
-    """
-    Backpropagation using ReLU activation and mean-squared error loss.
-    target_output: list of desired output values (same length as outputlayer)
-    """
+def backpropagate(inputLayer, target, learning_rate=0.01):
+    """Backprop for a single example (MSE with linear output). Updates global weights/biases."""
     global weights, biases
 
-    # Forward pass (reuse your feed_forward structure)
-    hidden1 = [0 for _ in range(24)]
-    hidden2 = [0 for _ in range(16)]
-    output = [0 for _ in range(4)]
+    # Forward pass (store z and a)
+    z1, a1, z2, a2, z3, a3 = feed_forward(inputLayer)
 
-    for j in range(len(hidden1)):
-        for i in range(len(inputLayer)):
-            hidden1[j] += weights[0][i][j] * inputLayer[i]
-        hidden1[j] += biases[1][j]
-        hidden1[j] = relu(hidden1[j])
+    # Output delta: dL/dz3 = (a3 - target) * 1  (linear output)
+    delta3 = [0.0] * 4
+    for j in range(4):
+        # MSE derivative: d/dy (0.5*(y - t)^2) = (y - t)
+        delta3[j] = (a3[j] - target[j])
 
-    for j in range(len(hidden2)):
-        for i in range(len(hidden1)):
-            hidden2[j] += weights[1][i][j] * hidden1[i]
-        hidden2[j] += biases[2][j]
-        hidden2[j] = relu(hidden2[j])
+    # Hidden layer 2 delta: delta2 = (W2 * delta3) * relu'(z2)
+    delta2 = [0.0] * 16
+    for i in range(16):
+        downstream = 0.0
+        for j in range(4):
+            downstream += weights[2][i][j] * delta3[j]
+        delta2[i] = downstream * relu_derivative(z2[i])
 
-    for j in range(len(output)):
-        for i in range(len(hidden2)):
-            output[j] += weights[2][i][j] * hidden2[i]
-        output[j] += biases[3][j]
+    # Hidden layer 1 delta: delta1 = (W1 * delta2) * relu'(z1)
+    delta1 = [0.0] * 24
+    for i in range(24):
+        downstream = 0.0
+        for j in range(16):
+            downstream += weights[1][i][j] * delta2[j]
+        delta1[i] = downstream * relu_derivative(z1[i])
 
-    # --- Compute output layer deltas ---
-    output_deltas = [0 for _ in range(len(output))]
-    for j in range(len(output)):
-        error = target_output[j] - output[j]
-        output_deltas[j] = error  # linear output layer
+    # Update weights and biases (gradient descent: w -= lr * grad)
+    # weights[2] (16 -> 4)
+    for i in range(16):
+        for j in range(4):
+            grad = delta3[j] * a2[i]   # dL/dw = delta_out_j * activation_prev_i
+            weights[2][i][j] -= learning_rate * grad
+    for j in range(4):
+        biases[3][j] -= learning_rate * delta3[j]
 
-    # --- Hidden layer 2 deltas ---
-    hidden2_deltas = [0 for _ in range(len(hidden2))]
-    for i in range(len(hidden2)):
-        downstream = sum(output_deltas[j] * weights[2][i][j] for j in range(len(output)))
-        hidden2_deltas[i] = downstream * relu_derivative(hidden2[i])
+    # weights[1] (24 -> 16)
+    for i in range(24):
+        for j in range(16):
+            grad = delta2[j] * a1[i]
+            weights[1][i][j] -= learning_rate * grad
+    for j in range(16):
+        biases[2][j] -= learning_rate * delta2[j]
 
-    # --- Hidden layer 1 deltas ---
-    hidden1_deltas = [0 for _ in range(len(hidden1))]
-    for i in range(len(hidden1)):
-        downstream = sum(hidden2_deltas[j] * weights[1][i][j] for j in range(len(hidden2)))
-        hidden1_deltas[i] = downstream * relu_derivative(hidden1[i])
-
-    # --- Update weights and biases ---
-    # Hidden2 → Output
-    for i in range(len(hidden2)):
-        for j in range(len(output)):
-            weights[2][i][j] += learning_rate * output_deltas[j] * hidden2[i]
-    for j in range(len(output)):
-        biases[3][j] += learning_rate * output_deltas[j]
-
-    # Hidden1 → Hidden2
-    for i in range(len(hidden1)):
-        for j in range(len(hidden2)):
-            weights[1][i][j] += learning_rate * hidden2_deltas[j] * hidden1[i]
-    for j in range(len(hidden2)):
-        biases[2][j] += learning_rate * hidden2_deltas[j]
-
-    # Input → Hidden1
+    # weights[0] (input -> 24)
     for i in range(len(inputLayer)):
-        for j in range(len(hidden1)):
-            weights[0][i][j] += learning_rate * hidden1_deltas[j] * inputLayer[i]
-    for j in range(len(hidden1)):
-        biases[1][j] += learning_rate * hidden1_deltas[j]
+        for j in range(24):
+            grad = delta1[j] * inputLayer[i]
+            weights[0][i][j] -= learning_rate * grad
+    for j in range(24):
+        biases[1][j] -= learning_rate * delta1[j]
 
+    return a3  # return Q-values if caller needs them
 
 def train_Q_network(state, next_state, action, reward, done, lr=0.01):
-    """One Q-learning update step using target value."""
-    _, _, q_values = feed_forward(state)
-    _, _, next_q_values = feed_forward(next_state)
+    """Single Q-learning update using bootstrapped target (Q-learning)."""
+    # get current Q and next Q
+    _, _, _, _, _, q_values = feed_forward(state)
+    _, _, _, _, _, next_q_values = feed_forward(next_state)
 
-    target_q = q_values[:]
+    target_q = q_values[:]   # copy
     if done:
         target = reward
     else:
         target = reward + GAMMA * max(next_q_values)
     target_q[action] = target
 
+    # backprop using the state and the desired target_q
     backpropagate(state, target_q, learning_rate=lr)
-
-    
-
-def relu(x):
-    return x if x > 0 else 0
-
-def relu_derivative(x):
-    return 1 if x > 0 else 0
-
-def backpropagate(inputLayer, target, learning_rate=0.01):
-    """
-    Performs one backward pass using ReLU activations and MSE loss.
-    Updates global weights and biases in place.
-    """
-
-    # Forward pass — store z and a for each layer
-    z1 = [0 for _ in range(24)]
-    a1 = [0 for _ in range(24)]
-    z2 = [0 for _ in range(16)]
-    a2 = [0 for _ in range(16)]
-    z3 = [0 for _ in range(4)]
-    a3 = [0 for _ in range(4)]
-
-    # --- Layer 1 (input -> 24) ---
-    for j in range(24):
-        total = biases[1][j]
-        for i in range(len(inputLayer)):
-            total += inputLayer[i] * weights[0][i][j]
-        z1[j] = total
-        a1[j] = relu(total)
-        print(a1[j], end= " ")
-    print()
-    # --- Layer 2 (24 -> 16) ---
-    for j in range(16):
-        total = biases[2][j]
-        for i in range(24):
-            total += a1[i] * weights[1][i][j]
-        z2[j] = total
-        a2[j] = relu(total)
-        print(a2[j], end= " ")
-    print()
-
-    # --- Output layer (16 -> 4) ---
-    for j in range(4):
-        total = biases[3][j]
-        for i in range(16):
-            total += a2[i] * weights[2][i][j]
-        z3[j] = total
-        a3[j] = relu(total)
-        print(a3[j], end="")
-    print()
-
-    # === Backward pass ===
-
-    # Output layer delta (MSE)
-    delta3 = [0 for _ in range(4)]
-    for j in range(4):
-        error = a3[j] - target[j]
-        delta3[j] = error * relu_derivative(z3[j])
-
-    # Hidden layer 2 delta
-    delta2 = [0 for _ in range(16)]
-    for i in range(16):
-        err_sum = 0
-        for j in range(4):
-            err_sum += delta3[j] * weights[2][i][j]
-        delta2[i] = err_sum * relu_derivative(z2[i])
-
-    # Hidden layer 1 delta
-    delta1 = [0 for _ in range(24)]
-    for i in range(24):
-        err_sum = 0
-        for j in range(16):
-            err_sum += delta2[j] * weights[1][i][j]
-        delta1[i] = err_sum * relu_derivative(z1[i])
-
-    # === Update weights & biases ===
-
-    # Layer 3 (16 -> 4)
-    for i in range(16):
-        for j in range(4):
-            weights[2][i][j] -= learning_rate * delta3[j] * a2[i]
-    for j in range(4):
-        biases[3][j] -= learning_rate * delta3[j]
-
-    # Layer 2 (24 -> 16)
-    for i in range(24):
-        for j in range(16):
-            weights[1][i][j] -= learning_rate * delta2[j] * a1[i]
-    for j in range(16):
-        biases[2][j] -= learning_rate * delta2[j]
-
-    # Layer 1 (input -> 24)
-    for i in range(len(inputLayer)):
-        for j in range(24):
-            weights[0][i][j] -= learning_rate * delta1[j] * inputLayer[i]
-    for j in range(24):
-        biases[1][j] -= learning_rate * delta1[j]
-
-    return a3  # output activations

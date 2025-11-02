@@ -17,12 +17,12 @@ apple = [5, 7]
 current_direction = "d"
 tail_direction = "d"
 
-# === Pygame setup ===
+# pygame
 pygame.init()
 CELL_SIZE = 20
 WIDTH, HEIGHT = DIMENSIONS[0] * CELL_SIZE, DIMENSIONS[1] * CELL_SIZE
 screen = pygame.display.set_mode((WIDTH + 200, HEIGHT))
-pygame.display.set_caption("Snake - Your Logic")
+pygame.display.set_caption("Snake")
 clock = pygame.time.Clock()
 
 colors = {
@@ -43,6 +43,8 @@ def draw_grid():
 def draw_input_layer(surface, inputs, x, y, size):
     # draw vertical column representing NN layer
     if len(inputs) != 4: # hard-coded, if the inputs list is not the outputs
+        if len(inputs) == 24:
+            print (inputs)
         for i, val in enumerate(inputs):
             brightness = max(0, min(255, int(val * 255)))
             color = (int(brightness*0.1), int(brightness*0.6), int(brightness*0.9))
@@ -77,16 +79,14 @@ def playRound():
             # no key pressed, skip loop
             x = current_direction
 
-        if bestmove == 0:
+        if bestmove == 0 and x != "s":
             x = "w"
-        elif bestmove == 1:
+        elif bestmove == 1 and x != "w":
             x = "s"
-        elif bestmove == 2:
+        elif bestmove == 2 and x != "d":
             x = "a"
-        elif bestmove == 3:
+        elif bestmove == 3 and x != "a":
             x = "d"
-        elif event.key == pygame.K_q:
-            return score
         else:
             x = current_direction
 
@@ -104,7 +104,7 @@ def playRound():
             (x == "d" and headpointer[1] + 1 == DIMENSIONS[0])
             or (x == "a" and headpointer[1] == 0)
             or (x == "w" and headpointer[0] == 0)
-            or (x == "s" and headpointer[0] == DIMENSIONS[1])
+            or (x == "s" and headpointer[0] + 1 == DIMENSIONS[1])
         ):
             nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
             return score
@@ -132,6 +132,7 @@ def playRound():
         snake.append(headpointer.copy())
 
         ate = False
+        score += 0.1
 
         if grid[headpointer[0]][headpointer[1]] == 3:
             ate = True                             
@@ -163,16 +164,13 @@ def playRound():
         inputs = nn.generateInputLayer(grid, headpointer, apple)
         draw_input_layer(screen, inputs, WIDTH + 20, 20, 6)
         
-        h1, h2, out = nn.feed_forward(inputs)
+        _, h1, _, h2, _, out = nn.feed_forward(inputs)
 
         # draw the 3 columns side-by-side on the right
         draw_input_layer(screen, inputs, WIDTH + 20, 20, 6)
         draw_input_layer(screen, h1, WIDTH + 40, 20, 6)
         draw_input_layer(screen, h2, WIDTH + 60, 20, 6)
         draw_input_layer(screen, out, WIDTH + 80, 20, 6)
-
-        inputs = nn.generateInputLayer(grid, headpointer, apple)
-        h1, h2, out = nn.feed_forward(inputs)
 
         bestmove = nn.choose_action(out, epsilon=0.1)
 
