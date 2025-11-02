@@ -59,28 +59,36 @@ def draw_input_layer(surface, inputs, x, y, size):
 def playRound():
     global headpointer, tailpointer, apple, current_direction, tail_direction
     score = 0
+    bestmove = 3
+    prev_state = nn.generateInputLayer(grid, headpointer, apple)
+    prev_action = 0
+    
+
     while True:
         # Handle events
+        # make sure the apple cell is marked on the grid so the eating branch detects it
+        grid[apple[0]][apple[1]] = 3
         for event in pygame.event.get():
+            
             if event.type == pygame.QUIT:
                 return score
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_w:
-                    x = "w"
-                elif event.key == pygame.K_s:
-                    x = "s"
-                elif event.key == pygame.K_a:
-                    x = "a"
-                elif event.key == pygame.K_d:
-                    x = "d"
-                elif event.key == pygame.K_q:
-                    return score
-                else:
-                    x = current_direction
                 break
         else:
             # no key pressed, skip loop
+            x = current_direction
+
+        if bestmove == 0:
+            x = "w"
+        elif bestmove == 1:
+            x = "s"
+        elif bestmove == 2:
+            x = "a"
+        elif bestmove == 3:
+            x = "d"
+        elif event.key == pygame.K_q:
+            return score
+        else:
             x = current_direction
 
         grid[apple[0]][apple[1]] = 3
@@ -117,10 +125,14 @@ def playRound():
 
         snake.append(headpointer.copy())
 
+        ate = False
+
         if grid[headpointer[0]][headpointer[1]] == 3:
+            ate = True                              # <-- new
             apple = random.choice([[i, j] for i in range(DIMENSIONS[0]) for j in range(DIMENSIONS[1]) if [i, j] not in snake])
             grid[headpointer[0]][headpointer[1]] = 2
             score += 1
+
         else:
             grid[headpointer[0]][headpointer[1]] = 2
 
@@ -144,7 +156,7 @@ def playRound():
         draw_grid()
         inputs = nn.generateInputLayer(grid, headpointer, apple)
         draw_input_layer(screen, inputs, WIDTH + 20, 20, 6)
-        inputs = nn.generateInputLayer(grid, headpointer, apple)
+        
         h1, h2, out = nn.feed_forward(inputs)
 
         # draw the 3 columns side-by-side on the right
@@ -153,14 +165,50 @@ def playRound():
         draw_input_layer(screen, h2, WIDTH + 60, 20, 6)
         draw_input_layer(screen, out, WIDTH + 80, 20, 6)
 
+        inputs = nn.generateInputLayer(grid, headpointer, apple)
+        h1, h2, out = nn.feed_forward(inputs)
+
+        bestmove = nn.choose_action(out, epsilon=0.1)
+
+        # --- calculate reward ---
+        reward = -0.01
+        done = False
+
+        if ate:              # <-- use the flag set earlier
+            reward = 1.0
+        elif headpointer[0] < 0 or headpointer[0] >= DIMENSIONS[0] or headpointer[1] < 0 or headpointer[1] >= DIMENSIONS[1]:
+            reward = -1.0
+            done = True
+
+        nn.train_Q_network(prev_state, inputs, prev_action, reward, done)
+
+        prev_state = inputs
+        prev_action = bestmove
+        print(bestmove)
         pygame.display.flip()
         pygame.display.flip()
         clock.tick(15)
-start = time.time()
-x = playRound()
-now = time.time()
 
-eval = x ** 2 / (now - start)
-print(x)
+def reset_game():
+    global grid, snake, direction_changes, headpointer, tailpointer, apple, current_direction, tail_direction
+    grid = [[0 for i in range(DIMENSIONS[1])] for j in range(DIMENSIONS[0])]
+    snake = [[5, 5], [5, 4]]
+    direction_changes = []
+    headpointer = [5, 5]
+    tailpointer = [5, 3]
+    apple = [5, 7]
+    current_direction = "d"
+    tail_direction = "d"
+
+episodes = 10000  # number of games to train
+for episode in range(episodes):
+    reset_game()
+    start = time.time()
+    score = playRound()
+    now = time.time()
+
+    eval = score ** 2 / (now - start)
+    print(f"Episode {episode+1}/{episodes} | Score: {score} | Eval: {eval:.2f}")
+
 pygame.quit()
 sys.exit()
