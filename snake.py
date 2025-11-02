@@ -3,8 +3,9 @@ import random
 import sys
 import time
 import nn
+import matplotlib.pyplot as plt
+scores = []
 
-# === Your grid setup ===
 DIMENSIONS = [30, 30]
 grid = [[0 for i in range(DIMENSIONS[1])] for j in range(DIMENSIONS[0])]
 snake = [[5, 5], [5, 4]]
@@ -31,7 +32,6 @@ colors = {
     3: (255, 50, 50),   # apple
 }
 
-# === Functions ===
 def draw_grid():
     screen.fill((0, 20, 40))
     for i in range(len(grid)):
@@ -54,8 +54,6 @@ def draw_input_layer(surface, inputs, x, y, size):
         rect = pygame.Rect(x, y + i * size, size, size)
         pygame.draw.rect(surface, color, rect)
 
-
-# === Game loop ===
 def playRound():
     global headpointer, tailpointer, apple, current_direction, tail_direction
     score = 0
@@ -65,9 +63,9 @@ def playRound():
     
 
     while True:
-        # Handle events
         # make sure the apple cell is marked on the grid so the eating branch detects it
         grid[apple[0]][apple[1]] = 3
+        pygame.event.pump()
         for event in pygame.event.get():
             
             if event.type == pygame.QUIT:
@@ -101,15 +99,16 @@ def playRound():
 
         # collision check
         try:
-            if x == "d" and grid[headpointer[0]][headpointer[1] + 1] == 1:
-                return score
-            if x == "a" and grid[headpointer[0]][headpointer[1] - 1] == 1:
-                return score
-            if x == "w" and grid[headpointer[0] - 1][headpointer[1]] == 1:
-                return score
-            if x == "s" and grid[headpointer[0] + 1][headpointer[1]] == 1:
+            if (
+                (x == "d" and grid[headpointer[0]][headpointer[1] + 1] == 1)
+                or (x == "a" and grid[headpointer[0]][headpointer[1] - 1] == 1)
+                or (x == "w" and grid[headpointer[0] - 1][headpointer[1]] == 1)
+                or (x == "s" and grid[headpointer[0] + 1][headpointer[1]] == 1)
+            ):
+                nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
                 return score
         except:
+            nn.train_Q_network(prev_state, inputs, prev_action, -1.0, True)
             return score
 
         grid[headpointer[0]][headpointer[1]] = 1
@@ -128,7 +127,7 @@ def playRound():
         ate = False
 
         if grid[headpointer[0]][headpointer[1]] == 3:
-            ate = True                              # <-- new
+            ate = True                             
             apple = random.choice([[i, j] for i in range(DIMENSIONS[0]) for j in range(DIMENSIONS[1]) if [i, j] not in snake])
             grid[headpointer[0]][headpointer[1]] = 2
             score += 1
@@ -170,11 +169,10 @@ def playRound():
 
         bestmove = nn.choose_action(out, epsilon=0.1)
 
-        # --- calculate reward ---
         reward = -0.01
         done = False
 
-        if ate:              # <-- use the flag set earlier
+        if ate:            
             reward = 1.0
         elif headpointer[0] < 0 or headpointer[0] >= DIMENSIONS[0] or headpointer[1] < 0 or headpointer[1] >= DIMENSIONS[1]:
             reward = -1.0
@@ -184,7 +182,7 @@ def playRound():
 
         prev_state = inputs
         prev_action = bestmove
-        print(bestmove)
+        #print(bestmove)
         pygame.display.flip()
         pygame.display.flip()
         clock.tick(15)
@@ -200,15 +198,25 @@ def reset_game():
     current_direction = "d"
     tail_direction = "d"
 
-episodes = 10000  # number of games to train
+episodes = 100  # number of games to train
 for episode in range(episodes):
     reset_game()
     start = time.time()
     score = playRound()
     now = time.time()
 
-    eval = score ** 2 / (now - start)
+    eval = score
     print(f"Episode {episode+1}/{episodes} | Score: {score} | Eval: {eval:.2f}")
+    scores.append(score)
+
+plt.figure(figsize=(8, 5))
+plt.plot(scores, label="Score per Episode", linewidth=1)
+plt.xlabel("Episode")
+plt.ylabel("Score")
+plt.title("Snake RL Training Progress")
+plt.legend()
+plt.grid(True, linestyle="--", alpha=0.6)
+plt.show()
 
 pygame.quit()
 sys.exit()
