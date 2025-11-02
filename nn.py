@@ -1,12 +1,8 @@
 import random
+import math
 
 def generateInputLayer(board, head, apple):
-    """
-    board: 2D list (grid)
-    head: [row, col]
-    apple: [row, col]
-    returns: list of normalized inputs
-    """
+    # board + head + apple
     input_layer = []
 
     rows = len(board)
@@ -40,13 +36,11 @@ def generateInputLayer(board, head, apple):
 
     return input_layer
 
-
-
 # ARCHITECTURE: 42 x 24 x 16 x 4
 
 # weights: 3D array. weights[layer][neuron][connectsto]
 
-random.seed(58)
+random.seed(57)
 
 weights = [
     [
@@ -77,16 +71,27 @@ def feed_forward(inputLayer):
         for currentNeuronIndex in range(len(inputLayer)):
             hiddenlayer1[nextNeuronIndex] += weights[0][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
         hiddenlayer1[nextNeuronIndex] += biases[1][nextNeuronIndex]
+        hiddenlayer1[nextNeuronIndex] = max(0, hiddenlayer1[nextNeuronIndex]) # activation function
     
     for nextNeuronIndex in range(len(hiddenlayer2)):
         for currentNeuronIndex in range(len(hiddenlayer1)):
             hiddenlayer2[nextNeuronIndex] += weights[1][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
         hiddenlayer2[nextNeuronIndex] += biases[2][nextNeuronIndex]
+        hiddenlayer2[nextNeuronIndex] = max(0, hiddenlayer2[nextNeuronIndex]) # activation function
 
     for nextNeuronIndex in range(len(outputlayer)):
         for currentNeuronIndex in range(len(hiddenlayer2)):
             outputlayer[nextNeuronIndex] += weights[2][currentNeuronIndex][nextNeuronIndex] * inputLayer[currentNeuronIndex]
         outputlayer[nextNeuronIndex] += biases[3][nextNeuronIndex]
+        outputlayer[nextNeuronIndex] = math.tanh(outputlayer[nextNeuronIndex]) # activation function
+
+    # normalise output layer
+    sumOutputs = 0
+    for output in outputlayer:
+        sumOutputs += output
+
+    for i in range(len(outputlayer)):
+        outputlayer[i] = outputlayer[i] / sumOutputs
     
     return hiddenlayer1, hiddenlayer2, outputlayer
 
@@ -220,7 +225,8 @@ def backpropagate(inputLayer, target, learning_rate=0.01):
             total += inputLayer[i] * weights[0][i][j]
         z1[j] = total
         a1[j] = relu(total)
-
+        print(a1[j], end= " ")
+    print()
     # --- Layer 2 (24 -> 16) ---
     for j in range(16):
         total = biases[2][j]
@@ -228,6 +234,8 @@ def backpropagate(inputLayer, target, learning_rate=0.01):
             total += a1[i] * weights[1][i][j]
         z2[j] = total
         a2[j] = relu(total)
+        print(a2[j], end= " ")
+    print()
 
     # --- Output layer (16 -> 4) ---
     for j in range(4):
@@ -236,6 +244,8 @@ def backpropagate(inputLayer, target, learning_rate=0.01):
             total += a2[i] * weights[2][i][j]
         z3[j] = total
         a3[j] = relu(total)
+        print(a3[j], end="")
+    print()
 
     # === Backward pass ===
 
