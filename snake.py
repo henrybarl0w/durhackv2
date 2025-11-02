@@ -43,8 +43,6 @@ def draw_grid():
 def draw_input_layer(surface, inputs, x, y, size):
     # draw vertical column representing NN layer
     if len(inputs) != 4: # hard-coded, if the inputs list is not the outputs
-        if len(inputs) == 24:
-            print (inputs)
         for i, val in enumerate(inputs):
             brightness = max(0, min(255, int(val * 255)))
             color = (int(brightness*0.1), int(brightness*0.6), int(brightness*0.9))
@@ -203,17 +201,20 @@ def reset_game():
     current_direction = "d"
     tail_direction = "d"
 
-episodes = 100  # number of games to train
-for episode in range(episodes):
-    reset_game()
-    start = time.time()
-    score = playRound()
-    now = time.time()
+try:
+    print("CTRL+C TO CUT TRAINING")
+    episodes = 100  # number of games to train
+    for episode in range(episodes):
+        reset_game()
+        start = time.time()
+        score = playRound()
+        now = time.time()
 
-    eval = score
-    print(f"Episode {episode+1}/{episodes} | Score: {score} | Eval: {eval:.2f}")
-    scores.append(score)
-
+        eval = score
+        print(f"Episode {episode+1}/{episodes} | Score: {score} | Eval: {eval:.2f}")
+        scores.append(score)
+except:
+    nn.save_biases()
 plt.figure(figsize=(8, 5))
 plt.plot(scores, label="Score per Episode", linewidth=1)
 plt.xlabel("Episode")

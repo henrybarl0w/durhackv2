@@ -1,5 +1,6 @@
 import random
 import math
+import json
 
 def he_init(n_inputs, n_outputs):
     std = math.sqrt(2 / n_inputs)
@@ -47,20 +48,30 @@ def generateInputLayer(board, head, apple):
 
 random.seed(57)
 
-weights = [
-    he_init(55, 24),
-    he_init(24, 16),
-    he_init(16, 4)
-]
+if True:
+    weights = [
+        he_init(55, 24),
+        he_init(24, 16),
+        he_init(16, 4)
+    ]
 
 
-# biases: 2D array: biases[layer][neuron]
-biases = [
-    [], 
-    [random.random() for j in range(24)],
-    [random.random() for j in range(16)],
-    [random.random() for j in range(4)]
-]
+    # biases: 2D array: biases[layer][neuron]
+    biases = [
+        [], 
+        [0 for j in range(24)],
+        [0 for j in range(16)],
+        [0 for j in range(4)]
+    ]
+else:
+        # Load biases from JSON file
+        with open("biases.json", "r") as f:
+            biases = json.load(f)
+
+def save_biases():
+    """Save current biases to biases.json."""
+    with open("biases.json", "w") as f:
+        json.dump(biases, f)
 
 def feed_forward(inputLayer):
     """Return (z1, a1, z2, a2, z3, a3) where a3 are raw Q values (linear)."""
